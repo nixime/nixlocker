@@ -6,11 +6,11 @@ Name:       nixlocker
 Version:    %{_iv_pkg_version}
 Release:    %{_iv_pkg_release}%{?dist}
 Summary:    LUKS unlocker for SDCard
-License:    The Artistic License 2.0
+License:    The Artistic License
 Group:      Nixime          
 Source:     nixlocker.tgz
 BuildRoot:  %{_tmppath}/%{name}-%{version}-build
-Requires:   socat inotify-tools
+Requires:   socat inotify-tools util-linux
 Conflicts:  plymouth
 
 %description

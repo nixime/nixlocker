@@ -3,12 +3,32 @@
 # Copyright 2019 NIXIME@GITHUB
 #
 
+#++++++++++++++++++++++++++++++++++++++++++++++++++++
+# GLOBALS
+#====================================================
+CFGFLDR=/etc/nixime
+CFGFLNM=nixlocker.cfg
+DEVLBL=NIXIME
+DEVID=
+DEVUUID=
+KEYVALUE=
+SLOTID=
+LUKSDEV=
+TMPLOCK=$(mktemp)
+#----------------------------------------------------
+
+#++++++++++++++++++++++++++++++++++++++++++++++++++++
 # Final trap method to ensure everything is cleaned up
 function finish 
 {
     [ -e ${TMPLOCK} ] && rm ${TMPLOCK}
 }
 trap finish EXIT
+#----------------------------------------------------
+
+#++++++++++++++++++++++++++++++++++++++++++++++++++++
+# FUNCTIONS
+#====================================================
 
 #
 # writeFinalConfig
@@ -19,7 +39,7 @@ trap finish EXIT
 function writeFinalConfig()
 {
     mkdir -p ${CFGFLDR}
-    cfg=${CFGFLDR}/nixlocker.cfg
+    cfg=${CFGFLDR}/${CFGFLNM}
     touch ${cfg}
     
     # Check for the label value, if it exists, replace it otherwise add it
@@ -43,16 +63,16 @@ function writeFinalConfig()
 #
 # genKey
 #   This method will, if a key doesn't already exist, generate a new random number and set this
-#   as the new key value. Both KEYVALUE and nixlocker.key will be set after this method is run.
+#   as the new key value. Both KEYVALUE and nixlocker.nixkey will be set after this method is run.
 #
-# [in] fldr The folder location where nixlocker.key should be generated
+# [in] fldr The folder location where nixlocker.nixkey should be generated
 #
 function genKey()
 {
     fldr=$1
-    [ ! -e ${fldr}/nixlocker.key ] && openssl rand -hex 1024 > ${fldr}/nixlocker.key
-    cp ${fldr}/nixlocker.key ${TMPLOCK}
-    KEYVALUE=$(cat ${fldr}/nixlocker.key)
+    [ ! -e ${fldr}/nixlocker.nixkey ] && openssl rand -hex 1024 > ${fldr}/nixlocker.nixkey
+    cp ${fldr}/nixlocker.nixkey ${TMPLOCK}
+    KEYVALUE=$(cat ${fldr}/nixlocker.nixkey)
 }
 
 #
@@ -146,18 +166,11 @@ Usage: $0
 	-s LUKS slot ID to place the nixlocker key into
 EOF
 }
+#----------------------------------------------------
 
-
-# Some global variables
-CFGFLDR=/etc/nixime
-DEVLBL=NIXIME
-DEVID=
-DEVUUID=
-KEYVALUE=
-SLOTID=
-LUKSDEV=
-TMPLOCK=$(mktemp)
-
+#++++++++++++++++++++++++++++++++++++++++++++++++++++
+# MAIN APPLICATION CODE
+#====================================================
 while getopts hd:l:s: opt; do
     case $opt in
         h)
@@ -219,7 +232,7 @@ DEVUUID=$(blkid /dev/sdb1 --output export | grep -E "^UUID=" | awk -F= '{print $
 
 cat << EOF
 nixlocker will now update the system using the below settings:
-    KEYFILE   = ${DEVID}/nixlocker.key
+    KEYFILE   = ${DEVID}/nixlocker.nixkey
     LUKSDEV   = ${LUKSDEV}
     LUKS-SLOT = ${SLOTID}
 EOF
@@ -243,3 +256,4 @@ fi
 
 
 echo "Completed"
+#----------------------------------------------------

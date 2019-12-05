@@ -1,16 +1,16 @@
 # Description
 
-Patrick's locker, is a utility designed for use on Linux systems to unlock LUKS encrypted partitions using a key file stored on an external USB device key.
+Nixlocker, is a utility designed for use on Linux systems to unlock LUKS encrypted partitions using a key file stored on an external USB device key.
 
-The source code of this utility isDistributed under The Artistic License 2.0*
+# Design
 
-# Components
+This package was designed and tested on an OpenSUSE Leap based system. In theory it should work with other distributions as nothing should be specific to the OpenSUSE environment; however the SPEC file likely lists package names that might be specific to OpenSUSE.
 
+# Installation
+Run the Makefile and install the resulting RPM.
 
-# Design Docs
-
-## Configuration
-The locker utility works off a configuration file "/etc/nixime/plocker.cfg". This file contains the information about the external device and LUKS partitions.
+# Configuration
+The locker utility works off a configuration file "/etc/nixime/nixlocker.cfg". This file contains the information about the external device and LUKS partitions.
 
 <code>
 LABEL=NIXIME<br>

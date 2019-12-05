@@ -6,11 +6,15 @@
 #+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 # Define our constants, paths and commands that will be needed
 SPOOLDIR=/run/systemd/ask-password
+PASSFILE=nixlocker.nixkey
 DEVLBL=
-PASSFILE=nixlocker.key
 RAWDEV=
 UUID=
+RESPONSE=
 
+# Define all the commands that we will be using. Make sure to do this so
+# that this can be compared against the dracut config file otherwise the
+# needed tools will be missing.
 AWK=/usr/bin/awk
 CAT=/usr/bin/cat
 CUT=/usr/bin/cut
@@ -25,18 +29,26 @@ SOCAT=/usr/bin/socat
 UMOUNT=/usr/bin/umount
 BLKID=/sbin/blkid
 SLEEP=/usr/bin/sleep
-RESPONSE=
 #---------------------------------------------------------------
 
 #
 # getResponseValue
-#	Get the passphrase from the DEVICE for responding to requests from cryptsetup
+#	Get the passphrase from the DEVICE for responding to requests from cryptsetup.
+#
+# [in-global] DEVLBL
+# [in-global] UUID
+# [in-global] PASSFILE
+#
+# [out-global] RESPONSE
 #
 function setResponseValue()
 {
     RESPONSE=""
 
     # Get the password response from the keyfile on the labeled device
+    # NOTE: Attempted to use the disk-by-* method, but found that these where not created earlier enough
+    #       to enable the finding of the necessary USB device. This approach uses blkid to find the item
+    #       by label or uuid as a secondary.
     RAWDEV=$(${BLKID} --label ${DEVLBL})
     echo "RAWDEV: ${RAWDEV}"
     [ -z ${RAWDEV} ] && RAWDEV=$(${BLKID} --uuid ${UUID})
@@ -68,11 +80,17 @@ function setResponseValue()
 #   Process the provided Ask file by sending the password through the socket specified. This method assumes that
 #   the response needed is already set. This should be properly set before calling this method.
 #
+# [in] askfile Full path to the askfile being used for the LUKS request
+#
 function processAskFile()
 {
     askfile=$1
     
     echo "ASKFILE: ${askfile}"
+    for ln in $(${CAT} ${askfile}); do
+        echo "+ASKFILE: ${ln}"
+    done
+    
     # If something beat us to the response
     [ ! -e ${askfile} ] && return 1
 
