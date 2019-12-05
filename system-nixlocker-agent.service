@@ -1,0 +1,13 @@
+#
+# Copyright 2019 NIXIME@GITHUB
+#
+[Unit]
+Description=USB Based LUKS decrypter NIXLOCKER
+DefaultDependencies=no
+Conflicts=shutdown.target
+Requires=systemd-udevd.service
+Before=shutdown.target
+
+[Service]
+ExecStart=/etc/systemd/system/system-nixlocker-agent.sh
+

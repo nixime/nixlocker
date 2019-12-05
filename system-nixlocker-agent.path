@@ -1,0 +1,14 @@
+#
+# Copyright 2019 NIXIME@GITHUB
+#
+[Unit]
+Description=USB Based LUKS decrypter NIXLOCKER
+DefaultDependencies=no
+Conflicts=shutdown.target
+Before=shutdown.target
+Wants=sysinit.target
+
+[Path]
+DirectoryNotEmpty=/run/systemd/ask-password
+MakeDirectory=yes
+

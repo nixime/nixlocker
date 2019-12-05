@@ -1,0 +1,245 @@
+#!/usr/bin/sh
+#
+# Copyright 2019 NIXIME@GITHUB
+#
+
+# Final trap method to ensure everything is cleaned up
+function finish 
+{
+    [ -e ${TMPLOCK} ] && rm ${TMPLOCK}
+}
+trap finish EXIT
+
+#
+# writeFinalConfig
+#   This method will write a configuration file with the information used in the generation of the LUKS
+#   encryption content. This may be useful in a future upgrade to allow uninstalling, or other actions 
+#   based on the setup
+#
+function writeFinalConfig()
+{
+    mkdir -p ${CFGFLDR}
+    cfg=${CFGFLDR}/nixlocker.cfg
+    touch ${cfg}
+    
+    # Check for the label value, if it exists, replace it otherwise add it
+    grep -q '^LABEL=' ${cfg}
+    if [ $? -eq 0 ]; then
+        sed -i "s/^LABEL=.*/LABEL=${DEVLBL}/" ${cfg}
+    else
+        echo "LABEL=${DEVLBL}" >> ${cfg}
+    fi
+    
+    grep -q "^LUKSDEV=${LUKSDEV}" ${cfg}
+    [ $? -ne 0 ] && echo "LUKSDEV=${LUKSDEV}|${SLOTID}" >> ${cfg}
+
+    grep -q "^UUID=${DEVUUID}" ${cfg}
+    [ $? -ne 0 ] && echo "UUID=${DEVUUID}" >> ${cfg}
+    
+    # Set the permissions so only root can read them
+    chmod 400 ${cfg}
+}
+
+#
+# genKey
+#   This method will, if a key doesn't already exist, generate a new random number and set this
+#   as the new key value. Both KEYVALUE and nixlocker.key will be set after this method is run.
+#
+# [in] fldr The folder location where nixlocker.key should be generated
+#
+function genKey()
+{
+    fldr=$1
+    [ ! -e ${fldr}/nixlocker.key ] && openssl rand -hex 1024 > ${fldr}/nixlocker.key
+    cp ${fldr}/nixlocker.key ${TMPLOCK}
+    KEYVALUE=$(cat ${fldr}/nixlocker.key)
+}
+
+#
+# chooseDeviceId
+#   Reads all the avaialable USB devices and their partitions, then prompts the user to chose which
+#   of these will be used as the NIXIME partition for unlocking.
+#
+function chooseDeviceId()
+{
+    cnt=1
+    for usbid in $(ls /dev/disk/by-id/usb* | grep part); do
+        dev=$(readlink -f ${usbid})
+        echo "${cnt} ${dev}"
+        cnt=$((cnt+1))
+    done
+    echo -n "Choose USB: "
+    read DEVID
+}
+
+#
+# chooseLuksDeviceId
+#   Reads all the avaialable LUKS devices, then prompts the user to chose which
+#   of these will be unlocked by the nixlocker.
+#
+function chooseLuksDeviceId()
+{
+    cnt=1
+    for dev in $(blkid -t TYPE=crypto_LUKS | awk -F: '{print $1}'); do
+        echo "${cnt} ${dev}"
+        cnt=$(($cnt+1))
+    done
+    echo -n "Choose Device: "
+    read devnum
+
+    cnt=1
+    for dev in $(blkid -t TYPE=crypto_LUKS | awk -F: '{print $1}'); do
+        [ "x${cnt}" == "x${devnum}" ] && LUKSDEV=${dev}
+    done
+}
+
+#
+# chooseLuksSlotId
+#   Reads all the avaialable LUKS Slots on the chosen LUKS device, then prompts the user to chose which
+#   of these slots the new key will be placed into.
+#
+# [in] dev The raw device that identifies the LUKS encrypted partition
+#
+function chooseLuksSlotId()
+{
+    dev=$1
+    cryptsetup luksDump ${dev} | grep Slot
+    echo -n "Choose Slot: "
+    read SLOTID
+}
+
+#
+# doMountGen
+#   Mount the specified device and generate the necessary key for the nixlocker. 
+#
+# [in] dev The raw device that holds the NIXIME partition that will contain the key
+#
+function doMountGen()
+{
+    dev=$1
+    grep -q '${dev}' /proc/mounts
+    if [ $? -ne 0 ]; then
+        mpt=$(grep ${dev} /proc/mounts | awk '{print $2}')
+        genKey ${mpt}
+    else
+        tmpd=$(mktemp -d)
+        [ ! -d ${tmpd} ] && exit 91
+
+        mount ${dev} ${tmpd}
+        [ $? -ne 0 ] && exit 93
+
+        genKey ${tmpd}
+
+        umount ${tmpd}
+    fi
+}
+
+function usage()
+{
+cat << EOF
+Usage: $0
+    This script must be run with admin privliges as it modifies LUKS keys.
+
+	-d Device Partition (i.e. /dev/sdb2) that should be used to place keyfile on. This value is not used if a device with a label of ${DEVLBL} is
+	   already present. This device will be formatted and labeled with the ${DEVLBL} for use by nixlocker.
+	-l Full path to device that contains the LUKs partition that you want the Key added to
+	-s LUKS slot ID to place the nixlocker key into
+EOF
+}
+
+
+# Some global variables
+CFGFLDR=/etc/nixime
+DEVLBL=NIXIME
+DEVID=
+DEVUUID=
+KEYVALUE=
+SLOTID=
+LUKSDEV=
+TMPLOCK=$(mktemp)
+
+while getopts hd:l:s: opt; do
+    case $opt in
+        h)
+            usage
+            exit 0
+        ;;
+
+        d)
+            DEVID=${OPTARG}
+        ;;
+
+        l)
+            LUKSDEV=${OPTARG}
+        ;;
+
+        s)
+            SLOTID=${OPTARG}
+        ;;
+
+        *)
+            usage >&2
+            exit 1
+            ;;
+    esac
+done
+
+
+#
+# If a device with the appropriatel label already exists, then ignore any command options and
+# simply use it as the location to put the lockfile. Lock file is only generated if one does not
+# already exist.
+#
+if [ -e /dev/disk/by-label/${DEVLBL} ]; then
+    echo "${DEVLBL} Label Found"
+    DEVID=$(readlink -f /dev/disk/by-label/${DEVLBL})
+    [ $? -ne 0 ] && exit 92
+else
+    echo "Using Raw Device"
+    while [ -z ${DEVID} ]; do
+        chooseDeviceId
+    done
+fi
+
+[ -z ${DEVID} ] && exit 99
+doMountGen ${DEVID}
+
+#
+# Add the LUKS key to the specified slot and device. This is destructive and will replace the existing
+# key if one already exists.
+#
+while [ -z ${LUKSDEV} ]; do
+    chooseLuksDeviceId
+done
+while [ -z ${SLOTID} ]; do 
+    chooseLuksSlotId ${LUKSDEV}
+done
+
+DEVUUID=$(blkid /dev/sdb1 --output export | grep -E "^UUID=" | awk -F= '{print $2}')
+
+cat << EOF
+nixlocker will now update the system using the below settings:
+    KEYFILE   = ${DEVID}/nixlocker.key
+    LUKSDEV   = ${LUKSDEV}
+    LUKS-SLOT = ${SLOTID}
+EOF
+echo -n "Is this information correct (Y/N): "
+read confirm
+
+if [ "x${confirm}" == "xY" -o "x${confirm}" == "xy" ]; then
+    cryptsetup luksAddKey ${LUKSDEV} -S ${SLOTID} ${TMPLOCK}
+    if [ $? -ne 0 ]; then
+        echo "Error updating LUKS key slot"
+        exit 99
+    fi
+    writeFinalConfig
+    
+    # Make sure to add the new configuration file into initramfs
+    echo "Repacking initramfs...."
+    dracut -fq
+else
+    echo "User cancelled, no changes made."
+fi
+
+
+echo "Completed"
