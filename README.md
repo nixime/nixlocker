@@ -30,6 +30,5 @@ Elements used for script operation:
 #Issues
 
 1. This service is not the quickest. When your system boots up you may see the prompt for a password for a period of time before this service kicks in. At this time, unknown why this is the case.
-
 2. Cannot determine the appropriate systemd settings to block the starting of this service until the external usb devices are populated.
-
+3. nixlocker-gen does not work, manual key generation and setup is required

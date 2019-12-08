@@ -70,7 +70,9 @@ function writeFinalConfig()
 function genKey()
 {
     fldr=$1
-    [ ! -e ${fldr}/nixlocker.nixkey ] && openssl rand -hex 1024 > ${fldr}/nixlocker.nixkey
+    # Pass phrases can only be 512 characters long. Each hex value is 2 characters, so 256 is max size of the 
+    # key to generate.
+    [ ! -e ${fldr}/nixlocker.nixkey ] && openssl rand -hex 256 > ${fldr}/nixlocker.nixkey
     cp ${fldr}/nixlocker.nixkey ${TMPLOCK}
     KEYVALUE=$(cat ${fldr}/nixlocker.nixkey)
 }
@@ -240,7 +242,15 @@ echo -n "Is this information correct (Y/N): "
 read confirm
 
 if [ "x${confirm}" == "xY" -o "x${confirm}" == "xy" ]; then
-    cryptsetup luksAddKey ${LUKSDEV} -S ${SLOTID} ${TMPLOCK}
+	enabled=$(cryptsetup luksDump ${LUKSDEV} | grep "Slot ${SLOTID}" | tr -d "[:space:]")
+
+	cryptAction="luksAddKey" #default is to add the key
+	# If the slot is already enabled then replace the key
+	if [ "x$enabled" == "xENABLED" ]; then
+		cryptAction="luksChangeKey"
+	fi
+
+    cryptsetup ${cryptAction} ${LUKSDEV} -S ${SLOTID} ${TMPLOCK}
     if [ $? -ne 0 ]; then
         echo "Error updating LUKS key slot"
         exit 99
