@@ -43,18 +43,16 @@ function writeFinalConfig()
     touch ${cfg}
     
     # Check for the label value, if it exists, replace it otherwise add it
-    grep -q '^LABEL=' ${cfg}
-    if [ $? -eq 0 ]; then
-        sed -i "s/^LABEL=.*/LABEL=${DEVLBL}/" ${cfg}
-    else
-        echo "LABEL=${DEVLBL}" >> ${cfg}
-    fi
+    sed -i "/^LABEL=/d" ${cfg}
+    echo "LABEL=${DEVLBL}" >> ${cfg}
+
+    sed -i "/^UUID=/d" ${cfg}
+    echo "UUID=${DEVUUID}" >> ${cfg}
     
+    sed -i "/^LUKSDEV=$/d" ${cfg}
     grep -q "^LUKSDEV=${LUKSDEV}" ${cfg}
     [ $? -ne 0 ] && echo "LUKSDEV=${LUKSDEV}|${SLOTID}" >> ${cfg}
 
-    grep -q "^UUID=${DEVUUID}" ${cfg}
-    [ $? -ne 0 ] && echo "UUID=${DEVUUID}" >> ${cfg}
     
     # Set the permissions so only root can read them
     chmod 400 ${cfg}
@@ -242,7 +240,7 @@ echo -n "Is this information correct (Y/N): "
 read confirm
 
 if [ "x${confirm}" == "xY" -o "x${confirm}" == "xy" ]; then
-	enabled=$(cryptsetup luksDump ${LUKSDEV} | grep "Slot ${SLOTID}" | tr -d "[:space:]")
+	enabled=$(cryptsetup luksDump ${LUKSDEV} | grep "Slot ${SLOTID}" | tr -d "[:space:]" | awk -F: '{print $2}')
 
 	cryptAction="luksAddKey" #default is to add the key
 	# If the slot is already enabled then replace the key
