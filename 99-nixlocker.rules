@@ -1,0 +1,7 @@
+#
+#
+#
+ENV{ID_FS_LABEL}=="NIXIME", SYMLINK+="nixlock0"
+ENV{ID_FS_UUID}=="305F-2BCA", SYMLINK+="nixlock1"
+
+
