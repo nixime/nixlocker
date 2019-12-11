@@ -41,7 +41,9 @@ function writeFinalConfig()
     mkdir -p ${CFGFLDR}
     cfg=${CFGFLDR}/${CFGFLNM}
     touch ${cfg}
-    
+
+    cmnt=$(date)
+    echo "##EDITED ON ${cmnt}##" >> ${cfg}
     # Check for the label value, if it exists, replace it otherwise add it
     sed -i "/^LABEL=/d" ${cfg}
     echo "LABEL=${DEVLBL}" >> ${cfg}
@@ -160,10 +162,10 @@ cat << EOF
 Usage: $0
     This script must be run with admin privliges as it modifies LUKS keys.
 
-	-d Device Partition (i.e. /dev/sdb2) that should be used to place keyfile on. This value is not used if a device with a label of ${DEVLBL} is
-	   already present. This device will be formatted and labeled with the ${DEVLBL} for use by nixlocker.
-	-l Full path to device that contains the LUKs partition that you want the Key added to
-	-s LUKS slot ID to place the nixlocker key into
+    -d Device Partition (i.e. /dev/sdb2) that should be used to place keyfile on. This value is not used if a device with a label of ${DEVLBL} is
+       already present. This device will be formatted and labeled with the ${DEVLBL} for use by nixlocker.
+    -l Full path to device that contains the LUKs partition that you want the Key added to
+    -s LUKS slot ID to place the nixlocker key into
 EOF
 }
 #----------------------------------------------------
@@ -240,15 +242,15 @@ echo -n "Is this information correct (Y/N): "
 read confirm
 
 if [ "x${confirm}" == "xY" -o "x${confirm}" == "xy" ]; then
-	enabled=$(cryptsetup luksDump ${LUKSDEV} | grep "Slot ${SLOTID}" | tr -d "[:space:]" | awk -F: '{print $2}')
+    enabled=$(cryptsetup luksDump ${LUKSDEV} | grep "Slot ${SLOTID}" | tr -d "[:space:]" | awk -F: '{print $2}')
 
-	cryptAction="luksAddKey" #default is to add the key
-	# If the slot is already enabled then replace the key
-	if [ "x$enabled" == "xENABLED" ]; then
-		cryptAction="luksChangeKey"
-	fi
+    cryptAction="luksAddKey" #default is to add the key
+    # If the slot is already enabled then replace the key
+    if [ "x$enabled" == "xENABLED" ]; then
+        cryptAction="luksChangeKey"
+    fi
 
-    cryptsetup ${cryptAction} ${LUKSDEV} -S ${SLOTID} ${TMPLOCK}
+    #cryptsetup ${cryptAction} ${LUKSDEV} -S ${SLOTID} ${TMPLOCK}
     if [ $? -ne 0 ]; then
         echo "Error updating LUKS key slot"
         exit 99

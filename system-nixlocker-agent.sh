@@ -49,14 +49,9 @@ function setResponseValue()
     # NOTE: Attempted to use the disk-by-* method, but found that these where not created earlier enough
     #       to enable the finding of the necessary USB device. This approach uses blkid to find the item
     #       by label or uuid as a secondary.
-    #       
-    #       Decided to create udev rule to create links to the necessary devices instead. This way only have
-    #       check for existance rather than using commands to query the information.
-    #
-    RAWDEV=/dev/nixlocker0
-    [ ! -e ${RAWDEV} ] && RAWDEV=/dev/nixlocker1
-    [ ! -e ${RAWDEV} ] && ${ECHO} "Device not found" && return -1
-
+    RAWDEV=$(${BLKID} --label ${DEVLBL})
+    [ -z ${RAWDEV} ] && RAWDEV=$(${BLKID} --uuid ${UUID})
+    [ -z ${RAWDEV} ] && echo "Device not found" && return -1
 
     tmpd=$(${MKTMP} -d)
     [ ! -d ${tmpd} ] && return -1
@@ -89,9 +84,9 @@ function processAskFile()
 {
     askfile=$1
     
-    ${ECHO} "ASKFILE: ${askfile}"
+    echo "ASKFILE: ${askfile}"
     for ln in $(${CAT} ${askfile}); do
-        ${ECHO} "+ASKFILE: ${ln}"
+        echo "+ASKFILE: ${ln}"
     done
     
     # If something beat us to the response
@@ -102,7 +97,7 @@ function processAskFile()
     [ $? -ne 0 -o "x${sockfn}" == "x" ] && return 1
 
     # One last check before sending the response, then send the response to the socket
-    ${ECHO} "SEND Response: ${askfile}"
+    echo "SEND Response: ${askfile}"
     [ -e ${askfile} ] && ${ECHO} -n "+$RESPONSE" | ${SOCAT} - "UNIX-SENDTO:${sockfn}" 
     [ $? -ne 0 ] && ${ECHO} Error using $SOCAT to send response to $regfn
 
@@ -112,7 +107,7 @@ function processAskFile()
 #+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 # Error handling
 if [ -x ${FIND} -a -x ${GREP} -a -x ${CUT} -a -x ${ECHO} -a -x ${SOCAT} -a -x ${INWAIT} -a -x ${READLINK} -a -x ${MOUNT} ]; then
-    ${ECHO}"Starting NIXIME locker" >&2	
+    ${ECHO} "Starting NIXIME locker" >&2	
 elif [ ! -e ${SPOOLDIR} ]; then
     ${ECHO} "No spool dir ${SPOOLDIR} found" >&2
     exit 99
@@ -124,7 +119,7 @@ fi
 
 #+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 # Read configuration file for details on decryption logic
-[ ! -f /etc/nixime/nixlocker.cfg ] && ${ECHO} "Unable to find config" && exit 91
+[ ! -f /etc/nixime/nixlocker.cfg ] && echo "Unable to find config" && exit 91
 for kv in $(${CAT} /etc/nixime/nixlocker.cfg); do
     ${ECHO} "Config: ${kv}"
     key=$(${ECHO} "${kv}" | ${AWK} -F= '{print $1}')
@@ -146,34 +141,31 @@ done
 #---------------------------------------------------------------
 
 #+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-${ECHO} "Checking for locker stick"
-if [ ! -e "/dev/nixlocker0" -o ! -e "/dev/nixlocker1" ]; then
-	${INWAIT} -mq -e close_write -e moved_to /dev | while read base event file 
-	do
-		[ "/dev/${file}" == "/dev/nixlocker0" -o "/dev/${file}" == "/dev/nixlocker1" ] && break
-	done
+echo "Wait till RESPONSE is available"
+setResponseValue
+if [ -z ${RESPONSE} ]; then
+    # Wait for devices to become available
+    ${INWAIT} -mq -e create /dev | while read base event file 
+    do
+        ${ECHO} "DEVICE: {$base} ${event} ${file}"
+        setResponseValue
+        [ ! -z ${RESPONSE} ] && break
+    done
 fi
 
-${ECHO} "Found locker stick, get response"
-setResponseValue
-while [ -z ${RESPONSE} ]; do
-	sleep 1s
-    setResponseValue
-done
-
-${ECHO} "Start processing ${SPOOLDIR} ask files..."
-${ECHO} "+Checking for existing ASK files"
+echo "Start processing ${SPOOLDIR} ask files..."
+echo "+Checking for existing ASK files"
 for askfile in $(${FIND} ${SPOOLDIR} -name "ask\.*" -type f); do
     processAskFile ${askfile}
 done
 
-${ECHO} "+Start waiting for notifications"
+echo "+Start waiting for notifications"
 ${INWAIT} -mq -e close_write -e moved_to ${SPOOLDIR} | while read base event file 
 do
     processAskFile "${SPOOLDIR}/${file}"
 done
 
-${ECHO} "End"
+echo "End" >&2
 #---------------------------------------------------------------
 
 
