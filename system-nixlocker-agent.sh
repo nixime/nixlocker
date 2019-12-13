@@ -10,7 +10,7 @@ PASSFILE=nixlocker.nixkey
 DEVLBL=
 RAWDEV=
 UUID=
-RESPONSE=
+RESPONSE=""
 
 # Define all the commands that we will be using. Make sure to do this so
 # that this can be compared against the dracut config file otherwise the
@@ -51,13 +51,13 @@ function setResponseValue()
     #       by label or uuid as a secondary.
     RAWDEV=$(${BLKID} --label ${DEVLBL})
     [ -z ${RAWDEV} ] && RAWDEV=$(${BLKID} --uuid ${UUID})
-    [ -z ${RAWDEV} ] && echo "Device not found" && return -1
+    [ -z ${RAWDEV} ] && ${ECHO} "Device not found" && return -1
 
     tmpd=$(${MKTMP} -d)
-    [ ! -d ${tmpd} ] && return -1
+    [ ! -d ${tmpd} ] && return -2
 
     dev=$(${READLINK} -f ${RAWDEV})
-    [ $? -ne 0 ] && return -1
+    [ $? -ne 0 ] && return -2
 
     ${GREP} -q "${dev}" /proc/mounts
     if [ $? -eq 0 ]; then
@@ -65,7 +65,7 @@ function setResponseValue()
         RESPONSE=$(${CAT} ${mpt}/${PASSFILE})
     else
         ${MOUNT} -o ro ${dev} ${tmpd} >&2
-        [ $? -ne 0 ] && return -1
+        [ $? -ne 0 ] && return -2
         RESPONSE=$(${CAT} ${tmpd}/${PASSFILE})
         ${UMOUNT} ${tmpd}
     fi
@@ -84,9 +84,9 @@ function processAskFile()
 {
     askfile=$1
     
-    echo "ASKFILE: ${askfile}"
+    ${ECHO} "ASKFILE: ${askfile}"
     for ln in $(${CAT} ${askfile}); do
-        echo "+ASKFILE: ${ln}"
+        ${ECHO} "+ASKFILE: ${ln}"
     done
     
     # If something beat us to the response
@@ -97,7 +97,7 @@ function processAskFile()
     [ $? -ne 0 -o "x${sockfn}" == "x" ] && return 1
 
     # One last check before sending the response, then send the response to the socket
-    echo "SEND Response: ${askfile}"
+    ${ECHO} "SEND Response: ${askfile}"
     [ -e ${askfile} ] && ${ECHO} -n "+$RESPONSE" | ${SOCAT} - "UNIX-SENDTO:${sockfn}" 
     [ $? -ne 0 ] && ${ECHO} Error using $SOCAT to send response to $regfn
 
@@ -119,8 +119,8 @@ fi
 
 #+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 # Read configuration file for details on decryption logic
-[ ! -f /etc/nixime/nixlocker.cfg ] && echo "Unable to find config" && exit 91
-for kv in $(${CAT} /etc/nixime/nixlocker.cfg); do
+[ ! -f /etc/nixime/nixlocker.cfg ] && ${ECHO} "Unable to find config" && exit 91
+for kv in $(${GREP} -v '^#' /etc/nixime/nixlocker.cfg); do
     ${ECHO} "Config: ${kv}"
     key=$(${ECHO} "${kv}" | ${AWK} -F= '{print $1}')
     val=$(${ECHO} "${kv}" | ${AWK} -F= '{print $2}')
@@ -138,34 +138,39 @@ for kv in $(${CAT} /etc/nixime/nixlocker.cfg); do
         ;;
     esac
 done
+
 #---------------------------------------------------------------
 
 #+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-echo "Wait till RESPONSE is available"
 setResponseValue
-if [ -z ${RESPONSE} ]; then
-    # Wait for devices to become available
-    ${INWAIT} -mq -e create /dev | while read base event file 
-    do
+while [ -z ${RESPONSE} ]; do
+	${ECHO} "Wait till RESPONSE is available"
+	#
+    # Wait for devices to become available, Don't use the monitor method as that will create an infinite wait and not exit out. Unless grabbing pids
+    # and performing kills, which seems over burdensome for no real gain.
+    #
+    while read base event file; do
         ${ECHO} "DEVICE: {$base} ${event} ${file}"
         setResponseValue
-        [ ! -z ${RESPONSE} ] && break
-    done
-fi
+    done <<<$(${INWAIT} -q /tmp)
+done
 
-echo "Start processing ${SPOOLDIR} ask files..."
-echo "+Checking for existing ASK files"
+${ECHO} "Checking for existing ASK files"
 for askfile in $(${FIND} ${SPOOLDIR} -name "ask\.*" -type f); do
     processAskFile ${askfile}
 done
 
-echo "+Start waiting for notifications"
-${INWAIT} -mq -e close_write -e moved_to ${SPOOLDIR} | while read base event file 
-do
+${ECHO} "Start waiting for notifications"
+while read base event file; do
     processAskFile "${SPOOLDIR}/${file}"
-done
+done <<<$(${INWAIT} -mq -e close_write -e moved_to ${SPOOLDIR})
 
-echo "End" >&2
+#
+# The above command will never exit, and continue to monitor for ask files indefinetly. That is because of the "-m" option
+# on the inotifywait.
+# @TODO Consider if a timeout for waiting would be good or leave as infinite wait
+#
+
 #---------------------------------------------------------------
 
 

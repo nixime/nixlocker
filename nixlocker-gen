@@ -250,7 +250,7 @@ if [ "x${confirm}" == "xY" -o "x${confirm}" == "xy" ]; then
         cryptAction="luksChangeKey"
     fi
 
-    #cryptsetup ${cryptAction} ${LUKSDEV} -S ${SLOTID} ${TMPLOCK}
+    cryptsetup ${cryptAction} ${LUKSDEV} -S ${SLOTID} ${TMPLOCK}
     if [ $? -ne 0 ]; then
         echo "Error updating LUKS key slot"
         exit 99
