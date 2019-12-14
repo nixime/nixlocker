@@ -1,0 +1,6 @@
+#
+#
+#
+ENV{ID_FS_LABEL}=="NIXIME", SYMLINK+="nixlocker", GOTO="nixlocker_end"
+LABEL="nixlocker_end"
+

@@ -7,6 +7,7 @@
 # GLOBALS
 #====================================================
 CFGFLDR=/etc/nixime
+UDEVRULE=/etc/udev/rules.d/99-nixlocker.rules
 CFGFLNM=nixlocker.cfg
 DEVLBL=NIXIME
 DEVID=
@@ -14,6 +15,7 @@ DEVUUID=
 KEYVALUE=
 SLOTID=
 LUKSDEV=
+REGEN=0
 TMPLOCK=$(mktemp)
 #----------------------------------------------------
 
@@ -61,6 +63,19 @@ function writeFinalConfig()
 }
 
 #
+# writeUdevRule
+#	Write out our udev rule using the label and devuuid
+#
+function writeUdevRule()
+{
+cat > ${UDEVRULE} <<endmsg
+ENV{ID_FS_LABEL}=="${DEVLBL}", SYMLINK+="nixlocker", GOTO="nixlocker_end"
+ENV{ID_FS_UUID}=="${DEVUUID}", SYMLINK+="nixlocker", GOTO="nixlocker_end"
+LABEL="nixlocker_end"
+endmsg
+}
+
+#
 # genKey
 #   This method will, if a key doesn't already exist, generate a new random number and set this
 #   as the new key value. Both KEYVALUE and nixlocker.nixkey will be set after this method is run.
@@ -71,8 +86,8 @@ function genKey()
 {
     fldr=$1
     # Pass phrases can only be 512 characters long. Each hex value is 2 characters, so 256 is max size of the 
-    # key to generate.
-    [ ! -e ${fldr}/nixlocker.nixkey ] && openssl rand -hex 256 > ${fldr}/nixlocker.nixkey
+    # key to generate. For simplicity, using 128 as the key size
+    [ ! -e ${fldr}/nixlocker.nixkey -o "x${REGEN}" == "x1" ] && openssl rand -hex 128 > ${fldr}/nixlocker.nixkey
     cp ${fldr}/nixlocker.nixkey ${TMPLOCK}
     KEYVALUE=$(cat ${fldr}/nixlocker.nixkey)
 }
@@ -166,6 +181,7 @@ Usage: $0
        already present. This device will be formatted and labeled with the ${DEVLBL} for use by nixlocker.
     -l Full path to device that contains the LUKs partition that you want the Key added to
     -s LUKS slot ID to place the nixlocker key into
+    -f Force the regeneration of the encryption file, even if it already exists
 EOF
 }
 #----------------------------------------------------
@@ -173,7 +189,7 @@ EOF
 #++++++++++++++++++++++++++++++++++++++++++++++++++++
 # MAIN APPLICATION CODE
 #====================================================
-while getopts hd:l:s: opt; do
+while getopts hd:l:s:f opt; do
     case $opt in
         h)
             usage
@@ -190,6 +206,10 @@ while getopts hd:l:s: opt; do
 
         s)
             SLOTID=${OPTARG}
+        ;;
+        
+        f)
+            REGEN=1
         ;;
 
         *)
@@ -244,13 +264,12 @@ read confirm
 if [ "x${confirm}" == "xY" -o "x${confirm}" == "xy" ]; then
     enabled=$(cryptsetup luksDump ${LUKSDEV} | grep "Slot ${SLOTID}" | tr -d "[:space:]" | awk -F: '{print $2}')
 
-    cryptAction="luksAddKey" #default is to add the key
     # If the slot is already enabled then replace the key
     if [ "x$enabled" == "xENABLED" ]; then
-        cryptAction="luksChangeKey"
+        cryptsetup luksKillSlot ${LUKSDEV} ${SLOTID} -q
     fi
 
-    cryptsetup ${cryptAction} ${LUKSDEV} -S ${SLOTID} ${TMPLOCK}
+    cryptsetup luksAddKey ${LUKSDEV} -S ${SLOTID} ${TMPLOCK}
     if [ $? -ne 0 ]; then
         echo "Error updating LUKS key slot"
         exit 99

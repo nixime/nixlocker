@@ -33,7 +33,7 @@ SLEEP=/usr/bin/sleep
 
 #
 # getResponseValue
-#	Get the passphrase from the DEVICE for responding to requests from cryptsetup.
+#    Get the passphrase from the DEVICE for responding to requests from cryptsetup.
 #
 # [in-global] DEVLBL
 # [in-global] UUID
@@ -49,9 +49,13 @@ function setResponseValue()
     # NOTE: Attempted to use the disk-by-* method, but found that these where not created earlier enough
     #       to enable the finding of the necessary USB device. This approach uses blkid to find the item
     #       by label or uuid as a secondary.
-    RAWDEV=$(${BLKID} --label ${DEVLBL})
-    [ -z ${RAWDEV} ] && RAWDEV=$(${BLKID} --uuid ${UUID})
+    [ ! -z ${DEVLBL} ] && RAWDEV=$(${BLKID} --label ${DEVLBL})
+    [ -z ${RAWDEV} -a ! -z ${UUID} ] && RAWDEV=$(${BLKID} --uuid ${UUID})
     [ -z ${RAWDEV} ] && ${ECHO} "Device not found" && return -1
+
+    if [ -e /dev/nixlocker ]; then
+        ${ECHO} "nixlocker device exists"
+    fi
 
     tmpd=$(${MKTMP} -d)
     [ ! -d ${tmpd} ] && return -2
@@ -107,9 +111,12 @@ function processAskFile()
 #+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 # Error handling
 if [ -x ${FIND} -a -x ${GREP} -a -x ${CUT} -a -x ${ECHO} -a -x ${SOCAT} -a -x ${INWAIT} -a -x ${READLINK} -a -x ${MOUNT} ]; then
-    ${ECHO} "Starting NIXIME locker" >&2	
+    ${ECHO} "Starting NIXIME locker" >&2    
 elif [ ! -e ${SPOOLDIR} ]; then
     ${ECHO} "No spool dir ${SPOOLDIR} found" >&2
+    exit 99
+elif [ -e /tmp/nixskip ]; then
+    ${ECHO} "Skipping execution" >&2
     exit 99
 else
     ${ECHO} "Missing necessary tools" >&2
@@ -119,9 +126,9 @@ fi
 
 #+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 # Read configuration file for details on decryption logic
+DBGFLAG=0
 [ ! -f /etc/nixime/nixlocker.cfg ] && ${ECHO} "Unable to find config" && exit 91
 for kv in $(${GREP} -v '^#' /etc/nixime/nixlocker.cfg); do
-    ${ECHO} "Config: ${kv}"
     key=$(${ECHO} "${kv}" | ${AWK} -F= '{print $1}')
     val=$(${ECHO} "${kv}" | ${AWK} -F= '{print $2}')
     case $key in
@@ -135,6 +142,8 @@ for kv in $(${GREP} -v '^#' /etc/nixime/nixlocker.cfg); do
         
         DEBUG) # Set Debug printing
             set -xv
+            ${ECHO} > /tmp/nixskip
+            DBGFLAG=1
         ;;
     esac
 done
@@ -144,23 +153,20 @@ done
 #+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 setResponseValue
 while [ -z ${RESPONSE} ]; do
-	${ECHO} "Wait till RESPONSE is available"
-	#
+    #
     # Wait for devices to become available, Don't use the monitor method as that will create an infinite wait and not exit out. Unless grabbing pids
     # and performing kills, which seems over burdensome for no real gain.
     #
     while read base event file; do
-        ${ECHO} "DEVICE: {$base} ${event} ${file}"
+        ${ECHO} "/dev/${file}"
         setResponseValue
-    done <<<$(${INWAIT} -q /tmp)
+    done <<<$(${INWAIT} -q /dev)
 done
 
-${ECHO} "Checking for existing ASK files"
 for askfile in $(${FIND} ${SPOOLDIR} -name "ask\.*" -type f); do
     processAskFile ${askfile}
 done
 
-${ECHO} "Start waiting for notifications"
 while read base event file; do
     processAskFile "${SPOOLDIR}/${file}"
 done <<<$(${INWAIT} -mq -e close_write -e moved_to ${SPOOLDIR})

@@ -30,6 +30,7 @@ mkdir -p %{buildroot}/usr/local/bin
 
 # Configurations
 install -m 644 99-nixlocker.conf %{buildroot}/etc/dracut.conf.d/99-nixlocker.conf
+install -m 644 99-nixlocker.rules %{buildroot}/etc/udev/rules.d/99-nixlocker.rules
 install -m 640 nixlocker.cfg %{buildroot}/etc/nixime/nixlocker.cfg
 
 # Scripts
@@ -66,6 +67,7 @@ dracut -fq
 /usr/local/bin/nixlocker-gen
 
 %config(noreplace) /etc/nixime/nixlocker.cfg
+%config            /etc/udev/rules.d/99-nixlocker.rules
 
 %changelog
 
