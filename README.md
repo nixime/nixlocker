@@ -7,7 +7,7 @@ Nixlocker, is a utility designed for use on Linux systems to unlock LUKS encrypt
 This package was designed and tested on an OpenSUSE Leap based system. In theory it should work with other distributions as nothing should be specific to the OpenSUSE environment; however the SPEC file likely lists package names that might be specific to OpenSUSE.
 
 # Installation
-Run the Makefile and install the resulting RPM.
+Run the Makefile and install the resulting RPM. After installation you will need to perform a manual configuration following the configuration examples.
 
 # Configuration
 The locker utility works off a configuration file "/etc/nixime/nixlocker.cfg". This file contains the information about the external device and LUKS partitions.
@@ -31,4 +31,6 @@ Elements used for script operation:
 
 1. This service is not the quickest. When your system boots up you may see the prompt for a password for a period of time before this service kicks in. At this time, unknown why this is the case.
 2. Cannot determine the appropriate systemd settings to block the starting of this service until the external usb devices are populated.
-3. nixlocker-gen does not work, manual key generation and setup is required
+
+
+
