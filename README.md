@@ -13,10 +13,10 @@ Run the Makefile and install the resulting RPM. After installation you will need
 The locker utility works off a configuration file "/etc/nixime/nixlocker.cfg". This file contains the information about the external device and LUKS partitions.
 
 <code>
-LABEL=NIXIME<br>
-LUKSDEV=/dev/sda2|0<br>
-UUID=AAAA-BBBB<br>
-DEBUG=true<br>
+LABEL=NIXIME
+LUKSDEV=/dev/sda2|0
+UUID=AAAA-BBBB
+DEBUG=true
 </code>
 
 Elements used for defining the external USB device containing the lock file
